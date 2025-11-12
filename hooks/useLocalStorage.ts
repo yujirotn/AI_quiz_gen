@@ -1,45 +1,43 @@
-// FIX: Import React to bring the React namespace into scope for types used in the function signature.
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 function useLocalStorage<T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-  const [storedValue, setStoredValue] = useState<T>(() => {
+  const [value, setValue] = useState<T>(() => {
     try {
       const item = window.localStorage.getItem(key);
       return item ? JSON.parse(item) : initialValue;
     } catch (error) {
-      console.error(error);
+      console.error(`Error reading localStorage key “${key}”:`, error);
       return initialValue;
     }
   });
 
-  const setValue = (value: T | ((val: T) => T)) => {
+  useEffect(() => {
     try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      window.localStorage.setItem(key, JSON.stringify(valueToStore));
+      window.localStorage.setItem(key, JSON.stringify(value));
     } catch (error) {
-      console.error(error);
+      console.error(`Error writing to localStorage key “${key}”:`, error);
     }
-  };
+  }, [key, value]);
 
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === key) {
+      if (e.key === key && e.newValue) {
         try {
-          setStoredValue(e.newValue ? JSON.parse(e.newValue) : initialValue);
+          setValue(JSON.parse(e.newValue));
         } catch (error) {
-          console.error(error);
+          console.error(`Error parsing storage change for key “${key}”:`, error);
         }
       }
     };
+
     window.addEventListener('storage', handleStorageChange);
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [key, initialValue]);
+  }, [key]);
 
-
-  return [storedValue, setValue];
+  return [value, setValue];
 }
 
 export default useLocalStorage;
