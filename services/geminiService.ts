@@ -1,14 +1,24 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Question } from '../types';
 
-const API_KEY = process.env.API_KEY;
+// Lazily initialize the AI instance to avoid crashing the app if API key is missing on load.
+let ai: GoogleGenAI | null = null;
 
-if (!API_KEY) {
-  console.warn("API_KEY environment variable not set. AI features will be disabled.");
+function getAiInstance(): GoogleGenAI | null {
+  if (ai) {
+    return ai;
+  }
+  
+  const API_KEY = process.env.API_KEY;
+
+  if (!API_KEY) {
+    console.warn("API_KEY environment variable not set. AI features will be disabled.");
+    return null;
+  }
+
+  ai = new GoogleGenAI({ apiKey: API_KEY });
+  return ai;
 }
-
-const ai = new GoogleGenAI({ apiKey: API_KEY! });
 
 const quizGenerationSchema = {
     type: Type.ARRAY,
@@ -37,7 +47,8 @@ const quizGenerationSchema = {
 
 
 export const generateQuizFromTranscript = async (transcript: string, questionCount: number = 5): Promise<Omit<Question, 'id'>[]> => {
-  if (!API_KEY) {
+  const aiInstance = getAiInstance();
+  if (!aiInstance) {
     throw new Error("Gemini APIキーが設定されていません。");
   }
   
@@ -50,7 +61,7 @@ ${transcript}
 ---
 `;
 
-    const response = await ai.models.generateContent({
+    const response = await aiInstance.models.generateContent({
         model: "gemini-2.5-flash",
         contents: prompt,
         config: {
