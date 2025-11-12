@@ -3,13 +3,30 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
 import { Project } from '../../types';
+import pako from 'pako';
+
+const encodeProjectData = (project: Project): string => {
+    const dataToEncode = {
+        id: project.id,
+        name: project.name,
+        questions: project.questions,
+    };
+    const jsonString = JSON.stringify(dataToEncode);
+    // btoa can't handle raw binary strings, so we convert char by char
+    const compressed = pako.deflate(jsonString);
+    const compressedString = String.fromCharCode.apply(null, compressed as unknown as number[]);
+    const base64 = btoa(compressedString);
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+};
+
 
 const ProjectCard: React.FC<{ project: Project; onDelete: (id: string) => void }> = ({ project, onDelete }) => {
     const navigate = useNavigate();
     const copyUrl = () => {
-        const url = `${window.location.origin}${window.location.pathname}#/quiz/${project.url_slug}`;
+        const encodedData = encodeProjectData(project);
+        const url = `${window.location.origin}${window.location.pathname}#/quiz/${project.url_slug}?data=${encodedData}`;
         navigator.clipboard.writeText(url).then(() => {
-            alert('クイズのURLをクリップボードにコピーしました！');
+            alert('共有可能なクイズのURLをクリップボードにコピーしました！');
         });
     };
     

@@ -1,22 +1,54 @@
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, useLocation } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
 import QuizTaker from './QuizTaker';
+import { Project } from '../../types';
+import pako from 'pako';
 
-// Define components inside the same file to avoid unmounting issues
+const decodeProjectData = (encodedData: string): Project | null => {
+    try {
+        let base64 = encodedData.replace(/-/g, '+').replace(/_/g, '/');
+        while (base64.length % 4) {
+            base64 += '=';
+        }
+        const compressedString = atob(base64);
+        const compressed = new Uint8Array(compressedString.length);
+        for (let i = 0; i < compressedString.length; i++) {
+            compressed[i] = compressedString.charCodeAt(i);
+        }
+
+        const jsonString = pako.inflate(compressed, { to: 'string' });
+        const decoded = JSON.parse(jsonString);
+
+        if (decoded.id && decoded.name && Array.isArray(decoded.questions)) {
+            return {
+                ...decoded,
+                transcript: '',
+                url_slug: '',
+                is_published: true, 
+                createdAt: new Date().toISOString(),
+            };
+        }
+        return null;
+    } catch (error) {
+        console.error("Failed to decode project data from URL:", error);
+        return null;
+    }
+};
+
+
 const QuizStart: React.FC<{
   onStart: (userId: string) => void;
   projectTitle: string;
-}> = ({ onStart, projectTitle }) => {
+  projectId: string;
+}> = ({ onStart, projectTitle, projectId }) => {
   const { users, submissions } = useAppContext();
-  const { slug } = useParams<{ slug: string }>();
-  const { projects } = useAppContext();
-  const project = projects.find(p => p.url_slug === slug);
   const [selectedUser, setSelectedUser] = useState('');
   const [error, setError] = useState('');
 
   const availableUsers = users.filter(user => 
-    !submissions.some(s => s.userId === user.id && s.projectId === project?.id)
+    !submissions.some(s => s.userId === user.id && s.projectId === projectId)
   );
 
   const handleStart = () => {
@@ -64,11 +96,20 @@ const QuizComplete: React.FC = () => (
 
 const QuizFlow: React.FC = () => {
     const { slug } = useParams<{ slug: string }>();
+    const location = useLocation();
     const { projects, submissions, setSubmissions, attempts, setAttempts } = useAppContext();
     const [pageState, setPageState] = useState<'start' | 'taking' | 'complete'>('start');
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-    const project = projects.find(p => p.url_slug === slug);
+    const project = useMemo(() => {
+        const params = new URLSearchParams(location.search);
+        const data = params.get('data');
+        if (data) {
+            const decodedProject = decodeProjectData(data);
+            if (decodedProject) return decodedProject;
+        }
+        return projects.find(p => p.url_slug === slug);
+    }, [slug, location.search, projects]);
     
     useEffect(() => {
         if(currentUserId && project) {
@@ -118,7 +159,7 @@ const QuizFlow: React.FC = () => {
 
         switch (pageState) {
             case 'start':
-                return <QuizStart onStart={handleStartQuiz} projectTitle={project.name} />;
+                return <QuizStart onStart={handleStartQuiz} projectTitle={project.name} projectId={project.id} />;
             case 'taking':
                 return <QuizTaker projectTitle={project.name} questions={project.questions} onSubmit={handleSubmit} onGrade={handleGrade} isStickyFooter={true} />;
             case 'complete':
